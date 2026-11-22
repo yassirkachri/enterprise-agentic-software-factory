@@ -1,0 +1,16 @@
+# ARB dispensation record (Acme policy, not a platform
+# feature). One file per waiver in dispensations/ of the
+# factory policy repo; check-dispensations.sh fails it the
+# day after `expires`. A renewal is a new record and a new id.
+id: ARB-2026-031
+class: egress-domain
+scope: risk-engine CI sandbox (allowedDomains)
+change: add sdk.cardnet.example for the scheme SDK download
+requested_by: risk-engine-change-owner@acme.example
+risk_owner: appsec-lead@acme.example
+approved: 2026-10-02
+expires: 2026-12-31          # 90 days at most
+compensating:
+  - SDK pinned by SHA-256 in the lockfile
+  - proxy log for the domain reviewed weekly by AppSec
+exit: mirror the SDK to pypi.acme.internal, then remove

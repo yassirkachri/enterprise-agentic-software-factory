@@ -1,0 +1,5 @@
+{
+  "forceLoginMethod": "gateway",
+  "forceLoginGatewayUrl": "https://claude-gw.acme.internal",
+  "allowedProviders": ["gateway"]
+}

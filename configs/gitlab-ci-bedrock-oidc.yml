@@ -1,0 +1,123 @@
+# Acme Risk Engine: L3 implementer on GitLab CI/CD.
+# Bedrock through OIDC. No static cloud keys anywhere.
+# Lives in the platform project acme/platform/factory-ci.
+# The Risk Engine project's "CI/CD configuration file"
+# setting points here, so a merge request cannot edit the
+# pipeline that judges it. Run from the web UI with the
+# item input set, e.g. RISK-1042.
+spec:
+  inputs:
+    item:
+      default: none
+      regex: ^(none|RISK-[0-9]+)$
+---
+stages: [test, implement, publish]
+
+variables:
+  ACME_ITEM: $[[ inputs.item ]]
+
+# Kill switch: ACME_AGENT_TIER is a protected project variable
+# that Platform sets. Any value but "L3", or none, stops agent
+# authoring. The project allows no pipeline variables, so no
+# run can override it. Verification jobs keep running.
+.agent_rules: &agent_rules
+  rules:
+    - if: >-
+        $CI_PIPELINE_SOURCE == "web" &&
+        $ACME_ITEM =~ /^RISK-[0-9]+$/ &&
+        $ACME_AGENT_TIER == "L3"
+
+implement:
+  stage: implement
+  <<: *agent_rules
+  image: $ACME_AGENT_IMAGE    # pinned Claude Code, bwrap, socat
+  tags: [acme-gvisor]         # runner pool on gVisor runsc
+  timeout: 45m
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://gitlab.acme.internal
+  variables:
+    CLAUDE_CODE_USE_BEDROCK: "1"
+    AWS_REGION: $ACME_AWS_REGION
+    ACME_GATE_MAX: "5"        # Stop gate attempts (Chapter 3)
+    GIT_DEPTH: "0"
+  script:
+    - |
+      # 1. Trade the job's OIDC token for 1-hour credentials.
+      creds=$(aws sts assume-role-with-web-identity \
+        --role-arn "$ACME_AGENT_ROLE_ARN" \
+        --role-session-name "risk-$CI_PIPELINE_ID" \
+        --web-identity-token "$GITLAB_OIDC_TOKEN" \
+        --duration-seconds 3600 --query Credentials \
+        --output json)
+      unset GITLAB_OIDC_TOKEN
+      # 2. Credentials live in a file the sandbox cannot read.
+      umask 077; mkdir -p ~/.aws
+      echo "$creds" | jq -r '"[acme-agent]",
+        "aws_access_key_id = \(.AccessKeyId)",
+        "aws_secret_access_key = \(.SecretAccessKey)",
+        "aws_session_token = \(.SessionToken)"' \
+        > ~/.aws/credentials
+      unset creds
+      # 3. Anchor sandbox paths to this checkout.
+      jq --arg r "$CI_PROJECT_DIR" \
+        '.sandbox.filesystem.denyWrite |= map($r + "/" + .)' \
+        /opt/acme/ci-sandbox.json > /tmp/acme-settings.json
+    - git switch -c "agent/$ACME_ITEM"
+    - |
+      T="Read,Edit,Write,Grep,Glob,Bash(make *)"
+      T="$T,Bash(git status *),Bash(git diff *)"
+      T="$T,Bash(git add *),Bash(git commit *)"
+      # The profile exists only now, so only Claude uses it.
+      AWS_PROFILE=acme-agent claude -p "Implement $ACME_ITEM
+        as specified in specs/. Commit on this branch. If the
+        spec is ambiguous, start your reply with a line that
+        begins SPEC-QUESTION: and stop." \
+        --settings /tmp/acme-settings.json \
+        --permission-mode dontAsk --allowedTools "$T" \
+        --max-turns 60 --max-budget-usd 20 \
+        --output-format json > result.json
+    # Agent-written code runs below. No credential remains.
+    - rm -f ~/.aws/credentials
+    - |
+      jq '{cost: .total_cost_usd, id: .session_id}' result.json
+    - |
+      first=$(jq -r .result result.json | head -n 1)
+      case "$first" in SPEC-QUESTION:*)
+        echo "Back to the Spec Gate" >&2; exit 1 ;;
+      esac
+    # Never trust the agent's own claim that tests pass.
+    - make test bdd
+    - git bundle create agent.bundle "$CI_COMMIT_SHA..HEAD"
+  artifacts:
+    when: always              # spend and diagnosis on failure
+    paths: [agent.bundle, result.json]
+    expire_in: 35 days        # past the monthly close (Ch. 6)
+
+publish:
+  # The only job that can push. ACME_PUSH_URL is masked,
+  # protected (pipelines on protected branches only), and
+  # scoped to the agent-publish environment, so neither the
+  # implement job nor a merge request pipeline receives it.
+  stage: publish
+  <<: *agent_rules
+  needs: [implement]
+  environment: agent-publish
+  image: $ACME_GIT_IMAGE
+  script:
+    - git fetch agent.bundle "HEAD:agent/$ACME_ITEM"
+    - >-
+      git push "$ACME_PUSH_URL" "agent/$ACME_ITEM"
+      -o merge_request.create
+      -o merge_request.target=main
+
+tests:
+  # The control run on every merge request: clean checkout,
+  # no id_tokens, no agent. Required through the merge check
+  # "Pipelines must succeed".
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  image: $ACME_BUILD_IMAGE
+  script:
+    - make deps && make test bdd

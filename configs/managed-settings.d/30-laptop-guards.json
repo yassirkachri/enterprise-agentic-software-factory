@@ -1,0 +1,27 @@
+{
+  "pluginConfigs": {
+    "cc-plugin-sec-default@builtin": {
+      "options": { "allowManagedModsOnly": true }
+    }
+  },
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "bash",
+        "args": ["/opt/acme/hooks/session-audit.sh"],
+        "timeout": 10
+      }]
+    }],
+    "PreToolUse": [{
+      "matcher": "WebFetch",
+      "hooks": [{
+        "type": "command",
+        "command": "bash",
+        "args": ["/opt/acme/hooks/webfetch-internal.sh"],
+        "timeout": 10,
+        "onFailure": "block"
+      }]
+    }]
+  }
+}

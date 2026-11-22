@@ -1,0 +1,7 @@
+{
+  "env": {
+    "OTEL_METRICS_INCLUDE_SESSION_ID": "false",
+    "OTEL_METRICS_INCLUDE_REPOSITORY": "true",
+    "OTEL_RESOURCE_ATTRIBUTES": "acme.surface=ci"
+  }
+}

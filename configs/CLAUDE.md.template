@@ -1,0 +1,34 @@
+# settlement-api: Repository Constitution
+
+Owner: Settlement APIs. Change Owner: see CODEOWNERS.
+Keep this file under 200 lines. Move detail to
+.claude/rules/ (path-scoped) or .claude/skills/ (on demand).
+
+## Source of truth
+- Behavior lives in specs/settlement.spec.md.
+- A ticket is a delta. If ticket and spec disagree, stop and
+  ask for a spec change. Never infer a business rule.
+- To ask, start your reply with a first line that begins
+  `SPEC-QUESTION:` and stop. Hooks and CI read that line.
+- Every behavior change cites its merged Spec Gate PR in the
+  PR body as `Spec-Gate: #<number> <scenario IDs>`, or carries
+  the no-behavior-change label. No approved delta, no code.
+
+## Commands
+- Install: `make deps`
+- Unit tests: `make test`
+- Contract tests (Gherkin): `make bdd`
+- Lint and types: `make check`
+
+## Architecture invariants
+- Money is integer minor units. Never use float for amounts.
+- Ledger postings are append-only. Corrections are new
+  postings, never updates.
+- Only src/settlement/fees/ computes fees.
+
+## Working rules
+- One task, one worktree, one PR.
+- Never edit tests/contracts/ to make a test pass.
+- Never read or print secrets, .env files, or credentials.
+
+@specs/README.md

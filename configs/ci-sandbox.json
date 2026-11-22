@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": false,
+    "credentials": {
+      "envVars": [{ "name": "CI_JOB_TOKEN", "mode": "deny" }]
+    },
+    "filesystem": {
+      "denyRead": ["~/.aws", "~/.ssh"],
+      "denyWrite": [
+        "tests/contracts",
+        "migrations",
+        ".claude",
+        ".gitlab-ci.yml",
+        ".github",
+        "Makefile"
+      ]
+    },
+    "network": {
+      "allowedDomains": ["pypi.acme.internal"]
+    }
+  }
+}

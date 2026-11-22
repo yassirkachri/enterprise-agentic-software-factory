@@ -1,0 +1,28 @@
+---
+name: validate-configs
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JSON parses (jq)
+        run: |
+          find configs -name '*.json' -print0 \
+            | xargs -0 -t -n1 jq empty
+
+      - name: YAML syntax (yamllint, relaxed)
+        run: pipx run yamllint==1.35.1 -c .yamllint.yml .
+
+      - name: Shell scripts (shellcheck)
+        run: |
+          find configs -name '*.sh' -print0 \
+            | xargs -0 shellcheck

@@ -1,0 +1,28 @@
+# settlement-api: the Spec Gate and the Merge Gate. Branch
+# protection on main enables "Require review from Code
+# Owners", so a pull request merges only with an approval
+# from the owner of every path it touches. GitHub reads this
+# file from the base branch. The last matching pattern takes
+# precedence, so the catch-all comes first.
+
+# Merge Gate: every change, REVIEW.md included.
+*                    @acme/settlement-change-owners
+
+# Intent: the durable spec and its executable contracts.
+/specs/              @acme/settlement-change-owners
+/tests/contracts/    @acme/settlement-change-owners
+
+# Guardrails, the jobs that judge a change, the build
+# targets those jobs run, and ownership itself.
+/.claude/            @acme/factory-platform
+/.github/            @acme/factory-platform
+/.gitlab-ci.yml      @acme/factory-platform
+/Makefile            @acme/factory-platform
+/.github/CODEOWNERS  @acme/settlement-change-owners
+
+# Workbench. The constitution belongs to the Change
+# Owners; rules and skills to the domain team; hooks,
+# settings, and agents stay with the platform team above.
+/CLAUDE.md           @acme/settlement-change-owners
+/.claude/rules/      @acme/settlement-engineers
+/.claude/skills/     @acme/settlement-engineers

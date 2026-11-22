@@ -1,0 +1,36 @@
+{
+  "name": "acme-critic-verdict",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"], "exclude": []
+    },
+    "repository_property": {
+      "include": [
+        { "name": "acme-factory",
+          "property_values": ["enrolled"] },
+        { "name": "acme-domain",
+          "property_values": ["settlement"] }
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "workflows",
+      "parameters": {
+        "do_not_enforce_on_create": false,
+        "workflows": [
+          { "repository_id": 812004417,
+            "path": ".github/workflows/claude-critic.yml",
+            "sha": "4f0e9c2b7a1d83e6f5c0b9a7d2e41c8f3b6a5d90" }
+        ]
+      }
+    }
+  ],
+  "bypass_actors": [
+    { "actor_id": 4100217, "actor_type": "Team",
+      "bypass_mode": "pull_request" }
+  ]
+}

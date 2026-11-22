@@ -1,0 +1,10 @@
+# Break-glass fragment: drops every laptop from L3 to L2.
+# Merge into the catch-all policy's cli: block in gateway.yaml
+# and redeploy. ask rules union into every group policy and are
+# checked before any allow rule. Revert through the same PR.
+permissions:
+  ask: [Edit, Write, NotebookEdit, Bash, WebFetch, "mcp__*"]
+sandbox:
+  autoAllowBashIfSandboxed: false  # sandboxed Bash asks too
+companyAnnouncements:
+  - "Factory at L2: approve each edit. See go.acme.internal/l2"

@@ -1,0 +1,31 @@
+{
+  "name": "acme-factory-checks",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"], "exclude": []
+    },
+    "repository_property": {
+      "include": [
+        { "name": "acme-factory",
+          "property_values": ["enrolled"] }
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "workflows",
+      "parameters": {
+        "do_not_enforce_on_create": false,
+        "workflows": [
+          { "repository_id": 812004417,
+            "path": ".github/workflows/claude-factory.yml",
+            "sha": "4f0e9c2b7a1d83e6f5c0b9a7d2e41c8f3b6a5d90" }
+        ]
+      }
+    }
+  ],
+  "bypass_actors": []
+}

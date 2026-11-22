@@ -1,0 +1,5 @@
+---
+# Syntax-level YAML checks. The files under configs/ match the
+# guide's Appendix A character for character, so spacing style is
+# not enforced; "relaxed" still fails on any syntax error.
+extends: relaxed

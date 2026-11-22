@@ -1,0 +1,247 @@
+# Acme: agent jobs for every pull request to main.
+# Lives in the platform repository acme/factory-ci as
+# .github/workflows/claude-factory.yml. The organization
+# ruleset acme-factory-checks requires it, pinned by SHA,
+# so a pull request cannot edit the jobs that judge it.
+# Runner images pin the Claude Code version and carry the
+# managed settings in /etc/claude-code (Chapters 3 and 5).
+name: claude-factory
+on: pull_request   # ruleset workflows ignore event filters
+
+permissions:
+  contents: read
+
+concurrency:                     # a new push cancels the old run
+  group: claude-factory-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CLAUDE_CODE_USE_BEDROCK: "1"
+  ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ vars.ACME_OPUS_MODEL }}
+  ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ vars.ACME_SONNET_MODEL }}
+  ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ vars.ACME_HAIKU_MODEL }}
+
+jobs:
+  tests:
+    # Covers subagent and /batch branches. Agent-written code
+    # runs here: no cloud identity, no token, mirror egress.
+    if: >-
+      github.event.pull_request.head.repo.full_name
+      == github.repository
+    runs-on: [self-hosted, acme-microvm]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: make deps && make test bdd
+      - name: Cited pending scenarios must pass
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          ids=$(printf '%s\n' "$BODY" | sed -nE \
+            's/^Spec-Gate: #[0-9]+ (([A-Z]+-[0-9]+ ?)+)$/\1/p' \
+            | head -n 1)
+          [ -z "$ids" ] || make bdd-pending IDS="$ids"
+
+  spec-trace:
+    # Deterministic, no model: a change to src/ cites the
+    # merged Spec Gate PR it implements (Chapter 2).
+    if: >-
+      github.event.pull_request.head.repo.full_name
+      == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - run: |
+          gh pr diff "$PR" -R "$REPO" --name-only \
+            | grep -q '^src/' || exit 0
+          pr=$(gh pr view "$PR" -R "$REPO" --json body,labels)
+          jq -e '.labels | any(.name == "no-behavior-change")' \
+            <<<"$pr" >/dev/null && exit 0
+          body=$(jq -r .body <<<"$pr")
+          n=$(printf '%s\n' "$body" \
+            | sed -nE 's/^Spec-Gate: #([0-9]+).*/\1/p')
+          n=${n%%$'\n'*}             # first citation only
+          if [ -z "$n" ]; then
+            echo "No Spec-Gate: line." >&2; exit 1
+          fi
+          ok=$(gh pr view "$n" -R "$REPO" --json mergedAt,files \
+            --jq '.mergedAt != null and
+              any(.files[].path; startswith("specs/"))')
+          if [ "$ok" != true ]; then
+            echo "#$n is no merged Spec Gate PR." >&2; exit 1
+          fi
+
+  classify:
+    # Advisory. A model may raise the bar, never lower it.
+    if: >-
+      github.event.pull_request.head.repo.full_name
+      == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: [self-hosted, acme-microvm]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    outputs:
+      needs_sarif: ${{ steps.label.outputs.needs_sarif }}
+    env:
+      SCHEMA: >-
+        {"type": "object", "required": ["needs_sarif"],
+        "properties": {"needs_sarif": {"type": "boolean"},
+        "reason": {"type": "string"}}}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.ACME_AGENT_ROLE_ARN }}
+          aws-region: ${{ vars.ACME_AWS_REGION }}
+          aws-profile: acme-agent
+      - name: Risk tier, run outside the checkout
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          AWS_PROFILE: acme-agent
+        run: |
+          git diff origin/main...HEAD > "$RUNNER_TEMP/diff"
+          cd "$(mktemp -d)"
+          claude -p --bare --model haiku \
+            --output-format json --json-schema "$SCHEMA" \
+            --permission-mode dontAsk --max-turns 3 \
+            --max-budget-usd 0.50 \
+            "Does this diff touch authentication, payment,
+            or entitlement logic?" \
+            < "$RUNNER_TEMP/diff" > "$RUNNER_TEMP/risk.json"
+      - name: Label unless the run answered false
+        id: label
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          v=$(jq -r '.structured_output.needs_sarif
+                     | tostring' "$RUNNER_TEMP/risk.json" \
+                2>/dev/null || true)
+          if [ "$v" = false ]; then
+            echo "needs_sarif=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_sarif=true" >> "$GITHUB_OUTPUT"
+            gh pr edit "$PR" --add-label needs-sarif
+          fi
+
+  sarif-gate:
+    # A high-risk PR merges only once a SARIF analysis is
+    # uploaded for its head commit on its branch. The label is
+    # read too, but removing it cannot waive classify.
+    needs: classify
+    if: >-
+      always() &&
+      github.event.pull_request.head.repo.full_name
+      == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      security-events: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+      BRANCH: ${{ github.head_ref }}
+      NEEDS: ${{ needs.classify.outputs.needs_sarif }}
+    steps:
+      - run: |
+          labels=$(gh pr view "$PR" -R "$REPO" --json labels \
+            --jq '[.labels[].name] | join(" ")')
+          case " $labels " in
+            *" needs-sarif "*) NEEDS=true ;;
+          esac
+          [ "$NEEDS" = false ] && exit 0
+          q="ref=refs/heads/$BRANCH"
+          n=$(gh api "repos/$REPO/code-scanning/analyses?$q" \
+            --jq "[.[] | select(.commit_sha == \"$SHA\")]
+                  | length")
+          [ "$n" -gt 0 ] && exit 0
+          echo "needs-sarif: upload the scan's SARIF for $SHA," \
+            "then re-run this job." >&2
+          exit 1
+
+  no-fork-agents:
+    # A job skipped by its if: reports success, so the
+    # critic workflow alone would pass a fork PR.
+    if: >-
+      github.event.pull_request.head.repo.full_name
+      != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Fork PR: no critic ran. Push to a branch." >&2
+          exit 1
+
+  review-fallback:
+    # Station 4 on our runners where managed Code Review is
+    # unavailable (ZDR, HIPAA configuration, CMEK). A plain
+    # prompt, not the code-review plugin, so no skip rule
+    # applies: a green run reviewed the head commit.
+    if: >-
+      vars.ACME_SELF_REVIEW == 'true' &&
+      github.event.pull_request.head.repo.full_name
+      == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: [self-hosted, acme-microvm]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+    env:
+      REPO: ${{ github.repository }}
+      PR_NO: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Instructions and review rules from main
+        run: |
+          git ls-files -z -- '*CLAUDE.md' '*CLAUDE.local.md' \
+            .claude .mcp.json | xargs -0 -r rm -f
+          git ls-tree -r -z --name-only origin/main \
+            | grep -zE '(^|/)CLAUDE\.md$|^\.claude/' \
+            | xargs -0 -r git checkout origin/main --
+          git show origin/main:REVIEW.md > /tmp/acme-review.md
+          git diff origin/main...HEAD > acme-pr.diff
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.ACME_AGENT_ROLE_ARN }}
+          aws-region: ${{ vars.ACME_AWS_REGION }}
+          aws-profile: acme-agent
+      - uses: anthropics/claude-code-action@v1
+        env:
+          AWS_PROFILE: acme-agent
+        with:
+          use_bedrock: "true"
+          # The publish identity of any agent implementer
+          allowed_bots: "acme-agent-publisher[bot]"
+          prompt: >-
+            Review the diff in acme-pr.diff for pull request
+            ${{ env.REPO }}#${{ env.PR_NO }} under the review
+            rules appended to your instructions. Post each
+            finding as an inline comment on the line it cites.
+          claude_args: >-
+            --append-system-prompt-file /tmp/acme-review.md
+            --max-budget-usd 10
+            --settings '{"disableAllHooks": true}'
+            --allowedTools Read Grep Glob
+            "mcp__github_inline_comment__create_inline_comment"

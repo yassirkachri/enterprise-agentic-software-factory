@@ -1,0 +1,68 @@
+# Factory scorecard. Acme policy, not a product file.
+# Grain: one service (one repository), one calendar month
+# for reporting; downgrade triggers read weekly values.
+# Each service is compared with its own pre-rollout baseline,
+# never with another team.
+
+baseline: pre-rollout quarter, per service
+
+dora:                          # definitions from dora.dev
+  change_lead_time:
+    source: git + deploy records
+    measure: median(deployed_at - committed_at)
+  deployment_frequency:
+    source: deploy records
+    measure: production deployments per week
+  failed_deployment_recovery_time:
+    source: incident records
+    measure: median(recovered_at - failed_deploy_at)
+  change_fail_rate:
+    source: deploy + incident records
+    measure: deploys needing immediate intervention / deploys
+  deployment_rework_rate:
+    source: change records
+    measure: emergency changes tied to an incident / deploys
+    trigger: above baseline two weeks running -> service to L2
+
+factory:
+  first_pass_acceptance:
+    population: merged PRs that cite an approved Spec Gate PR
+    accepted_when:
+      - no critic FAIL round
+      - no Important finding fixed after Station 4
+      - no changes-requested review by the Change Owner
+    measure: accepted / population
+  review_wait:
+    source: pull request events
+    measure: median(first_human_review_at - opened_at)
+  l2_escalations:
+    source: acme-hooks "gate exhausted"; second critic FAIL
+    measure: items dropped to L2 / items started, per week
+  hook_denials_per_pr:
+    source: claude_code.code_edit_tool.decision
+    filter: decision=reject, source=hook
+    measure: denials / merged PRs
+
+finops:
+  agent_cost_per_merged_pr:
+    sources:                     # laptop and CI sessions both
+      - claude_code.cost.usage by vcs.owner.name,
+        vcs.repository.name
+      - Code Review repository breakdown (list price)
+    cross_check: CI result.json total_cost_usd by repository
+    split_by: acme.surface       # laptop, ci
+    measure: (agent spend + Code Review spend) / merged PRs
+  cache_read_share:
+    source: claude_code.token.usage
+    measure: cacheRead / (input + cacheRead + cacheCreation)
+    split_by: acme.surface
+    alert: 10 points below the service's 4-week median
+  invoice_gap:
+    bills: [AWS for Bedrock, Anthropic for Code Review]
+    measure: abs(estimate - bill) / bill, per bill
+    alert: above 10% in any month
+
+excluded:                      # activity, not outcomes
+  - claude_code.lines_of_code.count
+  - claude_code.session.count
+  - per-person rankings of any metric

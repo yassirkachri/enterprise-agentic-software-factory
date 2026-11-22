@@ -1,0 +1,34 @@
+# L3 readiness record (Acme policy, not a platform feature).
+# One file per service in the factory policy repository. The
+# platform team raises a service to L3 only when every check
+# holds; Chapter 8 names who approves the change of level.
+service: settlement-api
+wave: 2
+autonomy: { current: L2, requested: L3 }
+
+people:
+  change_owners: "@acme/settlement-change-owners"
+  min_trained_owners: 2        # a deputy for every gate
+  security_champion: settlement-appsec@acme.example
+  trained:                     # taught on this service's own
+    change_owners:             # specs and pull requests
+      - spec-writing
+      - evidence-reading
+      - scorecard-reading
+    engineers:
+      - workbench-habits
+      - spec-writing
+
+checks:
+  baseline: five DORA metrics, one full pre-rollout quarter
+  spec: specs/settlement.spec.md with executable contracts
+  codeowners: catch-all to change owners; no syntax errors
+  protection: code-owner review, stale approvals dismissed
+  gateway: every engineer has signed in through the gateway
+  identity: owner team matches the IdP group, checked monthly
+
+exit:                          # against the service's own
+  - lead time and rework at or better than baseline
+  - review wait at or below baseline
+  - first-pass acceptance reported for four weeks running
+  - Spec Gate wait within one business day at p90

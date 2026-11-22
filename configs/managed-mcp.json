@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "tickets": {
+      "type": "http",
+      "url": "https://mcp.acme.internal/tickets"
+    },
+    "incidents": {
+      "type": "http",
+      "url": "https://mcp.acme.internal/incidents"
+    }
+  }
+}

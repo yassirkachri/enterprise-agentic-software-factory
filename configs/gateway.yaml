@@ -1,0 +1,95 @@
+# Acme Claude apps gateway (developer laptops only).
+# Run with:  claude gateway --config gateway.yaml
+# CI runners never use it: they federate to Bedrock (Ch. 5).
+# Secrets resolve from the environment at boot.
+
+listen:
+  host: 0.0.0.0
+  port: 8080
+  public_url: https://claude-gw.acme.internal
+
+oidc:
+  issuer: https://login.acme.internal
+  client_id: ${ACME_OIDC_CLIENT_ID}
+  client_secret: ${ACME_OIDC_CLIENT_SECRET}
+  allowed_email_domains: [acme.example]
+  allowed_groups: [acme-claude-code]
+  scopes: [openid, profile, email, offline_access, groups]
+
+session:
+  jwt_secret: ${ACME_GW_JWT_SECRET}
+  ttl_hours: 1                 # bounds deprovisioning delay
+
+store:
+  postgres_url: ${ACME_GW_POSTGRES_URL}
+  readiness_grace_seconds: 300  # stay in rotation if the store
+                                # fails; caps fail open (Ch. 6)
+
+# Same jurisdiction, two regions. Each developer reaches AWS
+# under an assumed-role session named after their IdP subject.
+upstreams:
+  - name: bedrock-east
+    provider: bedrock
+    region: us-east-1
+    auth: {}
+    assume_role:
+      role_arn: arn:aws:iam::111122223333:role/acme-gw-user
+      session_name: sub
+  - name: bedrock-west
+    provider: bedrock
+    region: us-west-2
+    auth: {}
+    assume_role:
+      role_arn: arn:aws:iam::111122223333:role/acme-gw-user
+      session_name: sub
+
+auto_include_builtin_models: true
+
+# Spend caps are set through the admin API, not here. Only
+# the policy repository's pipeline holds the write key, so
+# every cap change is a reviewed commit. No admin_groups.
+admin:
+  write_keys:
+    - { id: terraform, key: "${ACME_GW_ADMIN_WRITE_KEY}" }
+  read_keys:
+    - { id: finops, key: "${ACME_GW_ADMIN_READ_KEY}" }
+  blocked_message: Raise your cap at https://caps.acme.internal
+
+enforcement:
+  fail_closed_on_error: false  # a cap is a breaker, not a lock
+
+# cli: is the legacy client key; code: (gateway v2.1.296+)
+# also covers the Code tab of Claude Desktop (Ch. 6).
+managed:
+  policies:
+    - match: { groups: [acme-contractors] }
+      cli:
+        availableModels: [sonnet, haiku]
+        env:                     # the security plugin's reviews
+          SECURITY_REVIEW_MODEL: sonnet   # default to Opus,
+          SG_AGENTIC_MODEL: sonnet        # not granted here
+    - match: { groups: [acme-factory-canary] }   # ring 1
+      cli:
+        autoUpdatesChannel: latest
+        requiredMaximumVersion: "2.1.330"   # candidate
+    - match: {}
+      cli:
+        managedSourcesBehavior: merge   # keep MDM policy too
+        availableModels: [opus, sonnet, haiku]
+        enforceAvailableModels: true
+        model: sonnet
+        autoUpdatesChannel: stable
+        requiredMinimumVersion: "2.1.295"   # hook onFailure
+        requiredMaximumVersion: "2.1.320"   # certified
+        env:
+          OTEL_METRICS_INCLUDE_SESSION_ID: "false"
+          OTEL_METRICS_INCLUDE_REPOSITORY: "true"
+
+telemetry:
+  forward_to:
+    - url: https://otel.acme.internal
+      metrics: true
+      logs: false              # logs carry commands and paths
+      traces: false
+  resource_attributes:
+    acme.surface: laptop

@@ -1,0 +1,74 @@
+# Acme: Station 3 (Chapter 4), the adversarial critic.
+# Lives in the platform repository acme/factory-ci as
+# .github/workflows/claude-critic.yml. Each domain's
+# acme-critic-verdict ruleset requires it, pinned by SHA,
+# and names the one team that may bypass it (Chapter 8).
+name: claude-critic
+on: pull_request   # ruleset workflows ignore event filters
+
+permissions:
+  contents: read
+
+concurrency:                     # a new push cancels the old run
+  group: claude-critic-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CLAUDE_CODE_USE_BEDROCK: "1"
+  ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ vars.ACME_OPUS_MODEL }}
+
+jobs:
+  critic:
+    # Dependabot runs get no OIDC token, so its PRs skip the
+    # critic and meet the Change Owner as a person's change.
+    if: >-
+      github.event.pull_request.head.repo.full_name
+      == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: [self-hosted, acme-microvm]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Spec delta and code travel in separate PRs
+        run: |
+          p='^(specs|tests/contracts)/'
+          git diff --name-only --no-renames origin/main...HEAD \
+            > files.txt
+          if grep -qE "$p" files.txt \
+              && grep -qvE "$p" files.txt; then
+            echo "Spec delta and code in one PR. Split it." >&2
+            exit 1
+          fi
+      - name: Instructions from main, at any depth
+        run: |
+          git ls-files -z -- '*CLAUDE.md' '*CLAUDE.local.md' \
+            .claude .mcp.json | xargs -0 -r rm -f
+          git ls-tree -r -z --name-only origin/main \
+            | grep -zE '(^|/)CLAUDE\.md$|^\.claude/' \
+            | xargs -0 -r git checkout origin/main --
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.ACME_AGENT_ROLE_ARN }}
+          aws-region: ${{ vars.ACME_AWS_REGION }}
+          aws-profile: acme-agent
+      - name: Adversarial critic
+        env:
+          AWS_PROFILE: acme-agent
+        run: |
+          git diff origin/main...HEAD \
+            | claude -p --agent critic-reviewer \
+                --permission-mode dontAsk --max-turns 30 \
+                --max-budget-usd 8 --strict-mcp-config \
+                --settings '{"disableAllHooks": true}' \
+                "Review the piped diff against its specs." \
+            > critic.txt
+          tail -n 1 critic.txt | grep -qx 'VERDICT: PASS'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: critic-verdict
+          path: critic.txt

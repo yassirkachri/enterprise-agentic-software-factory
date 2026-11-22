@@ -1,0 +1,41 @@
+# Acme OpenTelemetry Collector for claude_code.* metrics.
+# Senders: the gateway relay (laptops) and CI runner pools.
+# TLS ends at the otel.acme.internal ingress; network policy
+# admits only the gateway and the runner pools.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Pseudonymize people before storage. SHA-256 of an email is
+  # reversible with the staff directory: restrict raw access.
+  attributes/pseudonymize:
+    actions:
+      - key: user.email
+        action: hash
+      - key: user.id
+        action: hash
+  resource/pseudonymize:
+    attributes:
+      - key: user.email
+        action: hash
+      - key: user.id
+        action: hash
+  batch: {}
+
+exporters:
+  otlp_http/metrics:
+    endpoint: https://metrics.acme.internal/otlp
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors:
+        - attributes/pseudonymize
+        - resource/pseudonymize
+        - batch
+      exporters: [otlp_http/metrics]

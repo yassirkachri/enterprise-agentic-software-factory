@@ -1,0 +1,7 @@
+{
+  "cleanupPeriodDays": 14,
+  "env": {
+    "DISABLE_FEEDBACK_COMMAND": "1",
+    "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1"
+  }
+}
