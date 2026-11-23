@@ -25,6 +25,12 @@ Levels 4 and 5, where agents merge without a named approver, are out
 of scope for regulated production services, and managed settings
 turn off the experimental Agent Teams feature.
 
+![Level 3 places human judgment at a Spec Gate and a Merge Gate, runs machine verification between them, and lets one telemetry plane observe every step.](docs/exec_at_a_glance.png)
+
+*Level 3 places human judgment at a Spec Gate and a Merge Gate,
+runs machine verification between them, and lets one telemetry
+plane observe every step.*
+
 The factory has five planes, each with one job and a named team that
 operates it:
 
@@ -42,6 +48,13 @@ MCP authorization specification
 (<https://modelcontextprotocol.io/specification/latest/basic/authorization>).
 
 ## What Each File Does and Where It Is Deployed
+
+![Each plane hands the next an artifact it can check: an approved spec, a branch built inside guardrails, an evidence bundle, and a sandboxed, attributable job, with one gateway and telemetry plane underneath all four.](docs/fig_02_five_plane_factory_arch.png)
+
+*Each plane hands the next an artifact it can check: an approved
+spec, a branch built inside guardrails, an evidence bundle, and a
+sandboxed, attributable job, with one gateway and telemetry plane
+underneath all four.*
 
 The files keep the `configs/` paths the guide cites. The "Deployed
 as" column gives the location each file takes in a real
