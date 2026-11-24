@@ -198,7 +198,7 @@ available at <https://yassirkachri.com>:
 - **Executive Brief**: the decisions, risks, and 90-day trajectory
   for an executive committee.
 - **Strategic Whitepaper**: the operating-model argument for
-  architects and engineering leaders.
+  CIOs, CTOs, CISOs, CFOs and VPs of Engineering.
 - **Reference Architecture & Implementation Guide**: *The
   Enterprise Agentic Software Factory*, with the mechanisms,
   sources, and full configurations.
