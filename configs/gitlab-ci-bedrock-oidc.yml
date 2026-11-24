@@ -74,6 +74,7 @@ implement:
         spec is ambiguous, start your reply with a line that
         begins SPEC-QUESTION: and stop." \
         --settings /tmp/acme-settings.json \
+        --strict-mcp-config \
         --permission-mode dontAsk --allowedTools "$T" \
         --max-turns 60 --max-budget-usd 20 \
         --output-format json > result.json

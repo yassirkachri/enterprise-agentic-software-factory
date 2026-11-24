@@ -5,14 +5,13 @@
 # /opt/acme/hooks/webfetch-internal.sh. Fails closed.
 set -euo pipefail
 url=$(jq -er '.tool_input.url')
+url=$(tr '[:upper:]' '[:lower:]' <<<"$url")
+# Match the whole authority: user info, a backslash, or a
+# second host cannot sit before or after the internal name.
+re='^https?://([a-z0-9-]+\.)+acme\.internal(:[0-9]+)?([/?#]|$)'
+[[ $url =~ $re ]] && exit 0
 host=${url#*://}
 host=${host%%[/?#]*}
-host=${host##*@}
-host=${host%%:*}
-host=$(tr '[:upper:]' '[:lower:]' <<<"$host")
-case "$host" in
-  *.acme.internal) exit 0 ;;
-esac
 logger -t acme-hooks "deny webfetch $host" || true
 echo "BLOCKED: WebFetch reaches *.acme.internal only." >&2
 exit 2

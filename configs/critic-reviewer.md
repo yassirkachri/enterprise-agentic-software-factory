@@ -23,9 +23,7 @@ Check, in this order:
 3. Tests. Were tests weakened, skipped, or deleted? Does
    each new branch of logic have a test?
 4. Spec gap. Does the diff add behavior the spec does not
-   describe? Report it as SPEC-GAP, not as a defect. Does
-   the PR's Spec-Gate line list every scenario the cited
-   change added? A missing one is a FAIL.
+   describe? Report it as SPEC-GAP, not as a defect.
 5. Invariants in CLAUDE.md: money, ledger, secrets.
 
 Rules:

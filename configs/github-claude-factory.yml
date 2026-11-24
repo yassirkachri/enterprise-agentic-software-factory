@@ -39,14 +39,16 @@ jobs:
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |
-          ids=$(printf '%s\n' "$BODY" | sed -nE \
+          # Web-edited bodies end lines in CRLF; strip the CR.
+          ids=$(printf '%s\n' "$BODY" | tr -d '\r' | sed -nE \
             's/^Spec-Gate: #[0-9]+ (([A-Z]+-[0-9]+ ?)+)$/\1/p' \
             | head -n 1)
           [ -z "$ids" ] || make bdd-pending IDS="$ids"
 
   spec-trace:
     # Deterministic, no model: a change to src/ cites the
-    # merged Spec Gate PR it implements (Chapter 2).
+    # merged Spec Gate PR it implements and every contract
+    # that PR added (Chapter 2).
     if: >-
       github.event.pull_request.head.repo.full_name
       == github.repository
@@ -61,15 +63,15 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
     steps:
       - run: |
-          gh pr diff "$PR" -R "$REPO" --name-only \
-            | grep -q '^src/' || exit 0
+          # Capture gh answers: an API error stops the job.
+          files=$(gh pr diff "$PR" -R "$REPO" --name-only)
+          grep -q '^src/' <<<"$files" || exit 0
           pr=$(gh pr view "$PR" -R "$REPO" --json body,labels)
           jq -e '.labels | any(.name == "no-behavior-change")' \
             <<<"$pr" >/dev/null && exit 0
-          body=$(jq -r .body <<<"$pr")
-          n=$(printf '%s\n' "$body" \
-            | sed -nE 's/^Spec-Gate: #([0-9]+).*/\1/p')
-          n=${n%%$'\n'*}             # first citation only
+          line=$(jq -r '.body' <<<"$pr" | tr -d '\r' \
+            | grep -m 1 '^Spec-Gate: #' || true)
+          n=${line#Spec-Gate: #}; n=${n%%[!0-9]*}
           if [ -z "$n" ]; then
             echo "No Spec-Gate: line." >&2; exit 1
           fi
@@ -79,6 +81,17 @@ jobs:
           if [ "$ok" != true ]; then
             echo "#$n is no merged Spec Gate PR." >&2; exit 1
           fi
+          # Cite every contract #n added, as the tests job reads.
+          ids=$(sed -nE \
+            's/^Spec-Gate: #[0-9]+ (([A-Z]+-[0-9]+ ?)+)$/\1/p' \
+            <<<"$line")
+          d=$(gh pr diff "$n" -R "$REPO")
+          added=$(sed -nE \
+            's/^\+## Contract ([A-Z]+-[0-9]+):.*/\1/p' <<<"$d")
+          for id in $added; do
+            grep -qw -- "$id" <<<"$ids" || {
+              echo "Spec-Gate: line misses $id." >&2; exit 1; }
+          done
 
   classify:
     # Advisory. A model may raise the bar, never lower it.
