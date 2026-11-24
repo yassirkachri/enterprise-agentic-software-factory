@@ -140,7 +140,7 @@ each platform. The guide lists the ones each file depends on.
   and measures nothing.
 - **Checked against the documentation.** Claude Code settings keys,
   hook events, flags, and paths were checked against the Claude
-  Code documentation as published in November 2026. GitHub, GitLab,
+  Code documentation as published in fall 2026. GitHub, GitLab,
   and AWS behavior follows their documentation as cited in the
   guide. Platforms change; confirm each mechanism against the
   current documentation before you rely on it.
