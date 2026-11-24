@@ -229,9 +229,9 @@ jobs:
       - name: Instructions and review rules from main
         run: |
           git ls-files -z -- '*CLAUDE.md' '*CLAUDE.local.md' \
-            .claude .mcp.json | xargs -0 -r rm -f
+            .claude '*/.claude/*' .mcp.json | xargs -0 -r rm -f
           git ls-tree -r -z --name-only origin/main \
-            | grep -zE '(^|/)CLAUDE\.md$|^\.claude/' \
+            | grep -zE '(^|/)CLAUDE\.md$|(^|/)\.claude/' \
             | xargs -0 -r git checkout origin/main --
           git show origin/main:REVIEW.md > /tmp/acme-review.md
           git diff origin/main...HEAD > acme-pr.diff

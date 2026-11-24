@@ -1,7 +1,8 @@
 # L3 readiness record (Acme policy, not a platform feature).
 # One file per service in the factory policy repository. The
 # platform team raises a service to L3 only when every check
-# holds; Chapter 8 names who approves the change of level.
+# holds or a readiness dispensation covers one (Chapter 8),
+# which also names who approves the change of level.
 service: settlement-api
 wave: 2
 autonomy: { current: L2, requested: L3 }
